@@ -1,0 +1,10 @@
+FROM public.ecr.aws/lambda/python:3.12-arm64
+
+RUN pip install requests --quiet
+
+COPY shared/ shared/
+COPY bot/__init__.py bot/__init__.py
+COPY bot/alert_sender.py bot/alert_sender.py
+COPY bot/telegram_client.py bot/telegram_client.py
+
+CMD ["bot.alert_sender.lambda_handler"]

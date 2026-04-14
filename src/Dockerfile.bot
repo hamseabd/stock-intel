@@ -1,0 +1,10 @@
+FROM public.ecr.aws/lambda/python:3.12-arm64
+
+COPY requirements.txt .
+RUN pip install -r requirements.txt --quiet
+
+COPY shared/ shared/
+COPY tools/ tools/
+COPY bot/ bot/
+
+CMD ["bot.handler.lambda_handler"]

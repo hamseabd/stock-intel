@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stock Intel Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <script src="https://unpkg.com/lightweight-charts@4/dist/lightweight-charts.standalone.production.js"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: { extend: { colors: { surface: '#111827', card: '#1f2937', accent: '#3b82f6' } } }
+    }
+  </script>
+  <style>
+    body { font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace; }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    .status-live { background: #22c55e; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { padding: 6px 12px; text-align: left; border-bottom: 1px solid #374151; }
+    th { color: #9ca3af; font-weight: 500; font-size: 0.75rem; text-transform: uppercase; }
+    .positive { color: #22c55e; }
+    .negative { color: #ef4444; }
+    .tab { cursor: pointer; padding: 8px 16px; border-radius: 6px; }
+    .tab.active { background: #3b82f6; color: white; }
+    .tab:not(.active) { color: #9ca3af; }
+    .tab:not(.active):hover { color: white; background: #374151; }
+  </style>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen">
+
+  <!-- Nav -->
+  <nav class="border-b border-gray-800 px-4 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <h1 class="text-lg font-bold">Stock Intel</h1>
+      <span class="status-dot status-live"></span>
+      <span id="last-updated" class="text-xs text-gray-500">Loading...</span>
+    </div>
+    <div class="flex gap-2 text-sm" id="tabs">
+      <span class="tab active" data-tab="portfolio">Portfolio</span>
+      <span class="tab" data-tab="congress">Congress</span>
+      <span class="tab" data-tab="flow">Flow</span>
+      <span class="tab" data-tab="darkpool">Dark Pool</span>
+      <span class="tab" data-tab="technicals">Technicals</span>
+      <span class="tab" data-tab="alerts">Alerts</span>
+    </div>
+  </nav>
+
+  <!-- Content -->
+  <main class="max-w-7xl mx-auto px-4 py-6">
+
+    <!-- Portfolio Tab -->
+    <div id="tab-portfolio" class="tab-content">
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+        <div class="bg-card rounded-lg p-4 border border-gray-800">
+          <div class="text-xs text-gray-500 uppercase">Portfolio Value</div>
+          <div id="total-value" class="text-2xl font-bold mt-1">--</div>
+        </div>
+        <div class="bg-card rounded-lg p-4 border border-gray-800">
+          <div class="text-xs text-gray-500 uppercase">Total P&amp;L</div>
+          <div id="total-pnl" class="text-2xl font-bold mt-1">--</div>
+        </div>
+        <div class="bg-card rounded-lg p-4 border border-gray-800">
+          <div class="text-xs text-gray-500 uppercase">Day Change</div>
+          <div id="day-change" class="text-2xl font-bold mt-1">--</div>
+        </div>
+      </div>
+      <div class="bg-card rounded-lg p-4 border border-gray-800 mb-4">
+        <h2 class="text-sm font-semibold text-gray-400 mb-3">POSITIONS</h2>
+        <table id="pnl-table">
+          <thead><tr><th>Ticker</th><th>Shares</th><th>Cost</th><th>Price</th><th>$ P&L</th><th>% P&L</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="bg-card rounded-lg p-4 border border-gray-800">
+        <h2 class="text-sm font-semibold text-gray-400 mb-3">MOVERS</h2>
+        <div id="movers-list" class="text-sm"></div>
+      </div>
+    </div>
+
+    <!-- Congress Tab -->
+    <div id="tab-congress" class="tab-content hidden">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+        <div class="bg-card rounded-lg p-4 border border-gray-800">
+          <h2 class="text-sm font-semibold text-gray-400 mb-3">CLUSTER ALERTS</h2>
+          <div id="clusters-list"></div>
+        </div>
+        <div class="bg-card rounded-lg p-4 border border-gray-800">
+          <h2 class="text-sm font-semibold text-gray-400 mb-3">SECTOR BREAKDOWN</h2>
+          <canvas id="sector-chart" height="200"></canvas>
+        </div>
+      </div>
+      <div class="bg-card rounded-lg p-4 border border-gray-800">
+        <h2 class="text-sm font-semibold text-gray-400 mb-3">RECENT TRADES</h2>
+        <table id="congress-table">
+          <thead><tr><th>Date</th><th>Member</th><th>Party</th><th>Ticker</th><th>Type</th><th>Amount</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Flow Tab -->
+    <div id="tab-flow" class="tab-content hidden">
+      <div class="bg-card rounded-lg p-4 border border-gray-800">
+        <h2 class="text-sm font-semibold text-gray-400 mb-3">UNUSUAL OPTIONS ACTIVITY</h2>
+        <table id="flow-table">
+          <thead><tr><th>Ticker</th><th>Strike</th><th>Expiry</th><th>Type</th><th>Volume</th><th>OI</th><th>Vol/OI</th><th>Premium</th><th>Direction</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Dark Pool Tab -->
+    <div id="tab-darkpool" class="tab-content hidden">
+      <div class="bg-card rounded-lg p-4 border border-gray-800">
+        <h2 class="text-sm font-semibold text-gray-400 mb-3">DARK POOL VOLUME</h2>
+        <table id="darkpool-table">
+          <thead><tr><th>Ticker</th><th>Dark %</th><th>Short %</th><th>Trend</th><th>Date</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Technicals Tab -->
+    <div id="tab-technicals" class="tab-content hidden">
+      <div class="bg-card rounded-lg p-4 border border-gray-800">
+        <h2 class="text-sm font-semibold text-gray-400 mb-3">TECHNICAL SIGNALS</h2>
+        <table id="technicals-table">
+          <thead><tr><th>Ticker</th><th>Price</th><th>RSI</th><th>MACD</th><th>SMA50</th><th>SMA200</th><th>Signal</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Alerts Tab -->
+    <div id="tab-alerts" class="tab-content hidden">
+      <div class="bg-card rounded-lg p-4 border border-gray-800">
+        <h2 class="text-sm font-semibold text-gray-400 mb-3">RECENT ALERTS</h2>
+        <div id="alerts-list" class="text-sm space-y-2">No alerts loaded.</div>
+      </div>
+    </div>
+
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

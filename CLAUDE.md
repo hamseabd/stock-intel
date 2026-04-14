@@ -1,104 +1,85 @@
-# Investment Workbench — Claude.md
+# Stock Intel — DIY Market Intelligence Platform
 
 ## What This Is
 
-A local terminal-based investment analyst. Run `python main.py` to start. The agent uses Claude (via Anthropic API) + Strands Agents SDK to call live data tools and manage a real portfolio.
+A serverless market intelligence platform deployed on AWS. Interact via Telegram from your phone. Tracks your portfolio, scans for unusual options flow, congressional trades, dark pool activity, technical signals, and pushes alerts proactively.
 
-## Setup
-
-```bash
-# Requires Python 3.10+
-python3.12 -m venv .venv
-source .venv/bin/activate
-pip install strands-agents anthropic yfinance feedparser scipy numpy python-dotenv
-
-# Add API key
-echo "ANTHROPIC_API_KEY=sk-ant-..." > .env
-
-python main.py
-```
-
-## File Structure
+## Architecture
 
 ```
-main.py                    — REPL, slash command expansion, agent initialization
-tools/
-  portfolio.py             — get_portfolio, update_portfolio
-  prices.py                — get_prices (yfinance batch, P&L calc)
-  options.py               — get_options_analysis (yfinance + Black-Scholes Greeks)
-  news.py                  — get_news (Yahoo Finance RSS via feedparser)
-  earnings.py              — get_earnings (yfinance, 30-day flag)
-  logger.py                — log_snapshot(), log_trade() (internal, not @tool)
-data/
-  portfolio.json           — source of truth for all positions
-  snapshots.jsonl          — P&L snapshot appended on every get_prices() call
-  trades.jsonl             — trade log appended on every update_portfolio() call
-prompts/
-  system_prompt.md         — agent persona and behavior rules (generic, no hardcoded dates)
-.env                       — ANTHROPIC_API_KEY (never commit this)
-requirements.txt
+Telegram ←→ API Gateway ←→ Lambda (bot handler)
+                                  ↓
+                           Command Router
+                          /              \
+                   Direct ($0)         AI (~$0.02)
+                   22 commands         5 commands
+                       ↓                    ↓
+                   Tools layer         Tools layer → Claude
+                       ↓                    ↓
+                   Formatters          Formatters + AI synthesis
+                       ↓                    ↓
+                   Telegram response   Telegram response
+
+EventBridge (cron) → Lambda (scanners) → SQS → Lambda (alert sender) → Telegram
+```
+
+## Project Structure
+
+```
+infrastructure/           Terraform IaC
+src/bot/                  Telegram handler, command router, AI commands
+src/tools/                Data tools (prices, options, congress, darkpool, etc.)
+src/scanners/             8 proactive scanners on cron
+src/shared/               Config, DB, S3, math, formatters, logging
+src/dashboard/            S3 static site (HTML/JS)
+scripts/                  Build, deploy, seed
+tests/                    286 tests (unit + E2E)
 ```
 
 ## Commands
 
-| Command | What it does |
-|---------|-------------|
-| `/news [TICKER]` | Latest headlines + impact on position |
-| `/catalyst [TICKER]` | Earnings dates, events, macro catalysts |
-| `/risk` | Full portfolio risk scan |
-| `/put` | Analyze all open puts (roll vs hold vs close) |
-| `/pnl` | Live P&L table for all positions |
-| `/update [change]` | Record a trade (e.g. "sold 50 AMZN at 195") |
-| `brief` | Full morning brief (P&L + flags + news + recommendations) |
-| `/help` | Show command list |
-| `exit` / `quit` | Exit |
+| Category | Commands | Claude? |
+|----------|----------|:-------:|
+| Portfolio | `/pnl`, `/portfolio`, `/options`, `/put`, `/update`, `/history` | No |
+| Research | `/news`, `/flow`, `/technicals`, `/darkpool`, `/congress`, `/earnings` | No |
+| Intel | `/movers`, `/sector`, `/scan`, `/compare` | No |
+| AI | `/brief`, `/catalyst`, `/risk`, `/analyze`, `/ask` | Yes |
+| Config | `/watch`, `/unwatch`, `/watchlist`, `/alerts`, `/threshold`, `/help` | No |
 
-## Key Design Notes
+## Key Design Decisions
 
-- **Strands handles the agentic loop** — tool calling, result parsing, and multi-step reasoning are automatic
-- **@tool decorator** — Strands extracts parameter schema from type hints + docstrings; keep both accurate
-- **Black-Scholes** — yfinance provides IV; delta/gamma/theta/vega are computed via scipy in `options.py`
-- **Expiry matching** — `options.py` finds the nearest available expiry if exact date isn't in the chain
-- **Earnings fallback** — tries `get_earnings_dates()` first, falls back to `ticker.calendar`
-- **Slash commands** — expanded to natural language prompts in `expand_command()` before hitting the agent
-- **System prompt is generic** — no hardcoded dates, tickers, or positions; those come from live tools
+- **Two-path router**: Direct commands are pure code ($0). AI commands gather data with code, then send a compact summary to Claude (~$0.02).
+- **Docker Lambda images**: Avoids binary compatibility issues (numpy/scipy on ARM64).
+- **NaN handling**: yfinance returns NaN for volume/OI. All numeric parsing uses safe conversion.
+- **Structured logging**: JSON in Lambda (CloudWatch), colored locally. Timer context manager for durations.
+- **Single mock point**: `telegram_client._post()` — all Telegram calls go through one function.
+
+## Deploy
+
+```bash
+cp infrastructure/terraform.tfvars.example infrastructure/terraform.tfvars
+cd infrastructure && terraform init && terraform apply
+bash scripts/build.sh
+bash scripts/deploy.sh
+```
+
+## Test
+
+```bash
+python -m pytest tests/ -v   # 286 tests, ~3.5s
+```
 
 ## Adding a New Tool
 
-1. Create the function in `tools/` with `@tool` decorator, type hints, and a clear docstring
-2. Import it in `main.py` and add to the `tools=[...]` list in `build_agent()`
-3. Optionally add a slash command in `expand_command()` in `main.py`
+1. Create function in `src/tools/` with type hints and docstring
+2. Import in `src/bot/commands.py`, add a `cmd_` function and register in `DIRECT_COMMANDS`
+3. Add help text in `src/bot/help.py` HELP_DETAIL dict
+4. Add tests in `tests/` (unit + E2E)
+5. Optionally add a scanner in `src/scanners/`
 
-## Portfolio Data Format
+## Adding a New Scanner
 
-`data/portfolio.json` — edit directly to add/remove positions:
-
-```json
-{
-  "positions": [
-    {"position_type": "shares", "ticker": "AMZN", "shares": 100, "cost_basis": 250.00},
-    {
-      "position_type": "option",
-      "ticker": "AMD",
-      "option_type": "put",
-      "strategy": "cash_secured_put",
-      "strike": 230.00,
-      "expiry": "2026-02-27",
-      "contracts": 1,
-      "cost_basis": 0.0,
-      "status": "open"
-    }
-  ]
-}
-```
-
-## Dependencies
-
-| Package | Version | Use |
-|---------|---------|-----|
-| `strands-agents` | ≥1.0.0 | Agent loop + tool calling |
-| `anthropic` | ≥0.40.0 | Claude API (required by strands AnthropicModel) |
-| `yfinance` | ≥0.2.50 | Live prices, options chains, earnings |
-| `feedparser` | ≥6.0.0 | Yahoo Finance RSS |
-| `scipy` + `numpy` | ≥1.11 / ≥1.24 | Black-Scholes Greeks |
-| `python-dotenv` | ≥1.0.0 | Load API key from .env |
+1. Create `src/scanners/new_scanner.py` with a `run_new_scan()` function
+2. Register in `src/scanners/handler.py` SCANNERS dict
+3. Add EventBridge rule in `infrastructure/main.tf`
+4. Add Lambda permission for the new EventBridge rule

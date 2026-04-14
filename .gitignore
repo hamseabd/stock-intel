@@ -35,3 +35,19 @@ data/trades.jsonl
 .coverage
 htmlcov/
 .pytest_cache/
+
+# Terraform
+infrastructure/.terraform/
+infrastructure/*.tfstate
+infrastructure/*.tfstate.backup
+infrastructure/*.tfvars
+infrastructure/.terraform.lock.hcl
+
+# Lambda build artifacts
+dist/
+
+# Old code (superseded by src/)
+tools_old/
+
+# OS
+Thumbs.db
