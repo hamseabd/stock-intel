@@ -4,6 +4,8 @@ Scans yfinance options chains for anomalies: volume/OI spikes, large premium
 concentration, and put/call ratio extremes. No AI — pure math.
 """
 
+import math
+
 import yfinance as yf
 
 from shared.math_utils import is_unusual_flow, calc_premium, put_call_ratio
@@ -44,7 +46,6 @@ def scan_options_flow(ticker: str) -> dict:
 
         for opt_type, df in [("call", chain.calls), ("put", chain.puts)]:
             for _, row in df.iterrows():
-                import math
                 _vol = row.get("volume", 0)
                 vol = 0 if (_vol is None or (isinstance(_vol, float) and math.isnan(_vol))) else int(_vol)
                 _oi = row.get("openInterest", 0)

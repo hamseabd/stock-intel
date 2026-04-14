@@ -68,9 +68,13 @@ def send_message(chat_id: str, text: str, parse_mode: str = "HTML",
     if len(text) > 4000:
         logger.info("Splitting long message", chat_id=chat_id, length=len(text))
         chunks = _split_message(text, 4000)
+        saved_markup = payload.pop("reply_markup", None)
         result = {}
         for i, chunk in enumerate(chunks):
             payload["text"] = chunk
+            # Only attach reply_markup to the last chunk
+            if saved_markup and i == len(chunks) - 1:
+                payload["reply_markup"] = saved_markup
             result = _post("sendMessage", payload)
         return result
 

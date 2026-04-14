@@ -44,9 +44,10 @@ def fetch_price_history(ticker: str, period: str = "6mo") -> dict:
     hist = yf.download(ticker, period=period, progress=False, auto_adjust=True)
     if hist.empty:
         return {"closes": [], "volumes": [], "highs": [], "lows": []}
+    hist = hist.dropna(subset=["Close"])
     return {
         "closes": hist["Close"].values.flatten().tolist(),
-        "volumes": hist["Volume"].values.flatten().tolist(),
+        "volumes": hist["Volume"].fillna(0).values.flatten().tolist(),
         "highs": hist["High"].values.flatten().tolist(),
         "lows": hist["Low"].values.flatten().tolist(),
     }

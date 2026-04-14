@@ -11,6 +11,7 @@ not raw API responses.
 """
 
 import json
+import re
 
 import anthropic
 
@@ -28,16 +29,12 @@ from shared.formatters import (
 from tools.portfolio import get_all_tickers
 from tools.prices import fetch_prices, calculate_portfolio_pnl
 from tools.options import analyze_all_options
-from tools.options_flow import scan_flow_multiple
-from tools.news import fetch_news_multiple
+from tools.options_flow import scan_options_flow, scan_flow_multiple
+from tools.news import fetch_news, fetch_news_multiple
 from tools.earnings import fetch_earnings
-from tools.congress import get_congress_recent, detect_clusters
+from tools.congress import get_congress_for_ticker, get_congress_recent, detect_clusters
 from tools.darkpool import get_darkpool_flags, fetch_darkpool, analyze_darkpool_trend
 from tools.technicals import analyze_technicals, get_technical_flags
-from tools.options_flow import scan_options_flow
-from tools.congress import get_congress_for_ticker
-from tools.news import fetch_news
-from tools.technicals import get_technical_flags
 
 _client = None
 
@@ -317,7 +314,6 @@ def handle_analyze(chat_id: str, args: str) -> str:
     trend = analyze_darkpool_trend(dp)
     sections.append(format_darkpool(ticker, dp[:5], trend))
 
-    from tools.news import fetch_news
     headlines = fetch_news(ticker)
     sections.append(format_news(ticker, headlines))
 
@@ -347,7 +343,16 @@ def handle_ask(chat_id: str, args: str) -> str:
         return "Usage: /ask Should I roll my AMD put?"
 
     positions = get_positions(chat_id)
-    context = f"Portfolio: {json.dumps(positions, default=str)[:500]}" if positions else "No positions"
+    if positions:
+        summary_items = []
+        for p in positions:
+            if p.get("position_type") == "shares":
+                summary_items.append(f"{p['ticker']}: {p.get('shares', 0):.0f} shares @ ${p.get('cost_basis', 0):.2f}")
+            elif p.get("position_type") == "option":
+                summary_items.append(f"{p['ticker']}: ${p.get('strike', 0):.0f} {p.get('option_type', '?')} exp {p.get('expiry', '?')}")
+        context = "Portfolio: " + "; ".join(summary_items)
+    else:
+        context = "No positions"
 
     try:
         answer = _ask_claude(
@@ -363,5 +368,4 @@ def handle_ask(chat_id: str, args: str) -> str:
 
 def _strip_html(text: str) -> str:
     """Remove HTML tags for Claude input."""
-    import re
     return re.sub(r"<[^>]+>", "", text)

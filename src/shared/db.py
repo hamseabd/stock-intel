@@ -1,7 +1,7 @@
 """DynamoDB helpers for all tables."""
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any, Optional
 
@@ -170,9 +170,11 @@ def query_congress_by_ticker(ticker: str, limit: int = 50) -> list[dict]:
 
 def query_congress_recent(days: int = 30, limit: int = 200) -> list[dict]:
     table = _table(DYNAMODB_TABLE_CONGRESS)
-    cutoff = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
     # Scan with filter — acceptable for low-volume congress data (~200 trades/month)
-    resp = table.scan(Limit=limit)
+    resp = table.scan(
+        FilterExpression=Attr("trade_date").gte(cutoff),
+    )
     items = [_from_decimal(i) for i in resp.get("Items", [])]
     # Sort by filing date descending
     items.sort(key=lambda x: x.get("filing_date", ""), reverse=True)

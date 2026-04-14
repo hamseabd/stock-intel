@@ -152,7 +152,8 @@ def format_earnings(tickers: list[dict]) -> str:
             status = " (THIS WEEK)"
         elif days is not None and days <= 14:
             status = " (SOON)"
-        lines.append(f"  {t['ticker']}: {t.get('next_earnings_date', 'Unknown')} ({days}d away){status}")
+        days_str = f"{days}d away" if days is not None else "N/A"
+        lines.append(f"  {t['ticker']}: {t.get('next_earnings_date', 'Unknown')} ({days_str}){status}")
     return "\n".join(lines)
 
 

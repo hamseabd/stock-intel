@@ -157,12 +157,25 @@ def detect_clusters(trades: list[dict], window_days: int = None, min_members: in
     for ticker, ticker_trades in by_ticker.items():
         if len(ticker_trades) < min_m:
             continue
-        # Group by window
+        # Group by window — only count trades within window_days of each other
         ticker_trades.sort(key=lambda x: x.get("trade_date", ""))
         members = set()
         buy_count = 0
         sell_count = 0
+        window_td = timedelta(days=window)
         for t in ticker_trades:
+            trade_date_str = t.get("trade_date", "")
+            if not trade_date_str:
+                continue
+            try:
+                trade_date = datetime.strptime(trade_date_str, "%Y-%m-%d")
+            except ValueError:
+                continue
+            # Only include trades within the window from the most recent trade
+            latest_date_str = ticker_trades[-1].get("trade_date", "")
+            latest_date = datetime.strptime(latest_date_str, "%Y-%m-%d")
+            if latest_date - trade_date > window_td:
+                continue
             members.add(t["member"])
             if "purchase" in t.get("tx_type", "").lower():
                 buy_count += 1

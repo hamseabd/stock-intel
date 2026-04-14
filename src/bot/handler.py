@@ -31,6 +31,12 @@ def lambda_handler(event, context):
         if "callback_query" in body:
             callback = body["callback_query"]
             chat_id = str(callback["message"]["chat"]["id"])
+
+            # Restrict to configured chat_id
+            if TELEGRAM_CHAT_ID and chat_id != TELEGRAM_CHAT_ID:
+                logger.warning("Rejected unauthorized callback", chat_id=chat_id)
+                return {"statusCode": 200}
+
             callback_data = callback.get("data", "")
             logger.info("Callback received", chat_id=chat_id, data=callback_data)
             telegram_client.answer_callback(callback["id"], "Processing...")
@@ -61,7 +67,7 @@ def lambda_handler(event, context):
         logger.error("Handler error", chat_id=chat_id, exc_info=True)
         try:
             if chat_id:
-                telegram_client.send_message(chat_id, f"Error: {str(e)[:200]}")
+                telegram_client.send_message(chat_id, "Something went wrong. Please try again.")
         except Exception:
             logger.error("Failed to send error message to user", chat_id=chat_id, exc_info=True)
 

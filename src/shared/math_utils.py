@@ -77,10 +77,11 @@ def black_scholes(
         delta = norm.cdf(d1)
 
     gamma = norm.pdf(d1) / (S * sigma * math.sqrt(T))
-    theta = (
-        -(S * norm.pdf(d1) * sigma) / (2 * math.sqrt(T))
-        - r * K * math.exp(-r * T) * (norm.cdf(-d2) if option_type == "put" else norm.cdf(d2))
-    ) / 365
+    common_term = -(S * norm.pdf(d1) * sigma) / (2 * math.sqrt(T))
+    if option_type == "put":
+        theta = (common_term + r * K * math.exp(-r * T) * norm.cdf(-d2)) / 365
+    else:
+        theta = (common_term - r * K * math.exp(-r * T) * norm.cdf(d2)) / 365
     vega = S * norm.pdf(d1) * math.sqrt(T) / 100
 
     intrinsic = max(K - S, 0) if option_type == "put" else max(S - K, 0)

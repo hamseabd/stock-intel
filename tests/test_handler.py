@@ -143,8 +143,7 @@ class TestErrorHandling:
             assert result["statusCode"] == 200
             mock_telegram.assert_called()
             _, payload = _last_send(mock_telegram)
-            assert "Error" in payload["text"]
-            assert "kaboom" in payload["text"]
+            assert "Something went wrong" in payload["text"]
 
     def test_telegram_failure_doesnt_crash(self, mock_telegram):
         mock_telegram.side_effect = Exception("Telegram down")

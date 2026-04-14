@@ -6,6 +6,7 @@ AI commands: data fetch + math + Claude synthesis → response (~$0.02).
 Every command function signature: (chat_id: str, args: str) -> str
 """
 
+import re
 from datetime import datetime, timedelta, timezone
 
 from shared.log import get_logger
@@ -33,6 +34,13 @@ from tools.earnings import fetch_earnings
 from tools.congress import get_congress_for_ticker, get_congress_recent, detect_clusters, get_sector_breakdown
 from tools.darkpool import fetch_darkpool, analyze_darkpool_trend, get_darkpool_flags
 from tools.technicals import analyze_technicals, get_technical_flags
+
+_TICKER_RE = re.compile(r'^[A-Z]{1,5}(-[A-Z])?$')
+
+
+def _valid_ticker(ticker: str) -> bool:
+    """Validate that a string looks like a stock ticker symbol."""
+    return bool(_TICKER_RE.match(ticker))
 
 
 # ── Direct Commands (no Claude, $0) ───────────────────────────────────────
@@ -345,7 +353,10 @@ def cmd_alerts(chat_id: str, args: str) -> str:
         return "All alerts disabled."
 
     if action == "mute":
-        hours = int(parts[1].replace("h", "")) if len(parts) > 1 else 2
+        try:
+            hours = int(parts[1].replace("h", "")) if len(parts) > 1 else 2
+        except ValueError:
+            return "Invalid mute duration. Usage: /alerts mute 2h"
         until = (datetime.now(timezone.utc) + timedelta(hours=hours)).isoformat()
         config["muted_until"] = until
         put_alert_config(chat_id, config)
@@ -446,6 +457,14 @@ def route_command(chat_id: str, text: str) -> str:
     parts = text.split(None, 1)
     cmd = parts[0].lower()
     args = parts[1] if len(parts) > 1 else ""
+
+    # Validate ticker args for commands that take a single ticker
+    _TICKER_COMMANDS = {
+        "/pnl", "/news", "/flow", "/technicals", "/darkpool", "/congress",
+        "/earnings", "/scan", "/catalyst", "/analyze",
+    }
+    if cmd in _TICKER_COMMANDS and args and not _valid_ticker(args.split()[0].upper()):
+        return f"Invalid ticker: {args.split()[0].upper()}"
 
     # Direct commands — no Claude, instant, $0
     if cmd in DIRECT_COMMANDS:

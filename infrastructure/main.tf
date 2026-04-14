@@ -48,7 +48,7 @@ resource "aws_iam_role_policy" "lambda_policy" {
           "logs:CreateLogStream",
           "logs:PutLogEvents",
         ]
-        Resource = "arn:aws:logs:*:*:*"
+        Resource = "arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${var.project_name}-*"
       },
       {
         Effect = "Allow"
@@ -107,6 +107,9 @@ resource "aws_dynamodb_table" "portfolio" {
     name = "position_id"
     type = "S"
   }
+  point_in_time_recovery {
+    enabled = true
+  }
   tags = local.tags
 }
 
@@ -124,6 +127,9 @@ resource "aws_dynamodb_table" "watchlist" {
     name = "ticker"
     type = "S"
   }
+  point_in_time_recovery {
+    enabled = true
+  }
   tags = local.tags
 }
 
@@ -140,6 +146,9 @@ resource "aws_dynamodb_table" "alerts" {
   attribute {
     name = "sk"
     type = "S"
+  }
+  point_in_time_recovery {
+    enabled = true
   }
   tags = local.tags
 }
@@ -173,6 +182,9 @@ resource "aws_dynamodb_table" "congress_trades" {
     range_key       = "trade_date"
     projection_type = "ALL"
   }
+  point_in_time_recovery {
+    enabled = true
+  }
   tags = local.tags
 }
 
@@ -190,6 +202,9 @@ resource "aws_dynamodb_table" "trades" {
     name = "timestamp"
     type = "S"
   }
+  point_in_time_recovery {
+    enabled = true
+  }
   tags = local.tags
 }
 
@@ -198,6 +213,23 @@ resource "aws_dynamodb_table" "trades" {
 resource "aws_s3_bucket" "data" {
   bucket = "${var.project_name}-data-${data.aws_caller_identity.current.account_id}"
   tags   = local.tags
+}
+
+resource "aws_s3_bucket_public_access_block" "data" {
+  bucket                  = aws_s3_bucket.data.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "data" {
+  bucket = aws_s3_bucket.data.id
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
 }
 
 resource "aws_s3_bucket" "dashboard" {
@@ -238,11 +270,23 @@ data "aws_caller_identity" "current" {}
 
 # ── SQS Alert Queue ───────────────────────────────────────────────────────
 
+resource "aws_sqs_queue" "alerts_dlq" {
+  name                      = "${var.project_name}-alerts-dlq"
+  message_retention_seconds = 1209600 # 14 days
+  sqs_managed_sse_enabled   = true
+  tags                      = local.tags
+}
+
 resource "aws_sqs_queue" "alerts" {
   name                       = "${var.project_name}-alerts"
   message_retention_seconds  = 86400 # 1 day
   visibility_timeout_seconds = 60
-  tags                       = local.tags
+  sqs_managed_sse_enabled    = true
+  redrive_policy = jsonencode({
+    deadLetterTargetArn = aws_sqs_queue.alerts_dlq.arn
+    maxReceiveCount     = 3
+  })
+  tags = local.tags
 }
 
 # ── ECR Repositories ───────────────────────────────────────────────────────
@@ -388,10 +432,10 @@ resource "aws_lambda_permission" "apigw" {
 
 # ── EventBridge Schedules ──────────────────────────────────────────────────
 
-# Price scanner — every 5 min during market hours (Mon-Fri 9:30-16:00 ET)
+# Price scanner — every 5 min during market hours (Mon-Fri 9:30-16:00 ET = 14:30-21:00 UTC)
 resource "aws_cloudwatch_event_rule" "price_scanner" {
   name                = "${var.project_name}-price-scanner"
-  schedule_expression = "rate(5 minutes)"
+  schedule_expression = "cron(0/5 14-20 ? * MON-FRI *)"
   tags                = local.tags
 }
 
