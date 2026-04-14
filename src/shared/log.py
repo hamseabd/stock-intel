@@ -35,12 +35,15 @@ class StructuredFormatter(logging.Formatter):
         # Add extra structured fields
         if hasattr(record, "extra_fields"):
             log_entry.update(record.extra_fields)
-        # Add exception info
-        if record.exc_info and record.exc_info[0]:
+        # Add exception info — resolve exc_info=True to actual sys.exc_info()
+        exc_info = record.exc_info
+        if exc_info is True:
+            exc_info = sys.exc_info()
+        if exc_info and exc_info[0]:
             log_entry["exception"] = {
-                "type": record.exc_info[0].__name__,
-                "message": str(record.exc_info[1]),
-                "traceback": traceback.format_exception(*record.exc_info),
+                "type": exc_info[0].__name__,
+                "message": str(exc_info[1]),
+                "traceback": traceback.format_exception(*exc_info),
             }
         return json.dumps(log_entry, default=str)
 
@@ -64,8 +67,11 @@ class LocalFormatter(logging.Formatter):
         if hasattr(record, "extra_fields") and record.extra_fields:
             fields = " ".join(f"{k}={v}" for k, v in record.extra_fields.items())
             msg += f" | {fields}"
-        if record.exc_info and record.exc_info[0]:
-            msg += f"\n{''.join(traceback.format_exception(*record.exc_info))}"
+        exc_info = record.exc_info
+        if exc_info is True:
+            exc_info = sys.exc_info()
+        if exc_info and exc_info[0]:
+            msg += f"\n{''.join(traceback.format_exception(*exc_info))}"
         return msg
 
 

@@ -24,6 +24,11 @@ def fetch_prices(tickers: list[str]) -> dict[str, float | None]:
         return {}
     logger.info("Fetching prices", tickers=tickers)
     raw = yf.download(tickers, period="1d", progress=False, auto_adjust=True)
+    # yfinance may return MultiIndex columns — flatten for single tickers
+    if hasattr(raw.columns, "droplevel") and raw.columns.nlevels > 1:
+        if len(tickers) == 1:
+            raw.columns = raw.columns.droplevel(1)
+
     prices = {}
     if len(tickers) == 1:
         try:
@@ -40,11 +45,30 @@ def fetch_prices(tickers: list[str]) -> dict[str, float | None]:
 
 
 def fetch_price_history(ticker: str, period: str = "6mo") -> dict:
-    """Fetch OHLCV history for a single ticker."""
+    """Fetch OHLCV history for a single ticker.
+
+    Args:
+        ticker: Stock symbol
+        period: yfinance period string (1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y, ytd, max)
+
+    Returns:
+        Dict with closes, volumes, highs, lows as flat lists
+    """
+    logger.info("Fetching price history", ticker=ticker, period=period)
     hist = yf.download(ticker, period=period, progress=False, auto_adjust=True)
     if hist.empty:
+        logger.warning("Empty price history", ticker=ticker)
         return {"closes": [], "volumes": [], "highs": [], "lows": []}
-    hist = hist.dropna(subset=["Close"])
+
+    # yfinance may return MultiIndex columns like ("Close", "AMZN") for single tickers.
+    # Flatten to simple column names.
+    if hasattr(hist.columns, "droplevel") and hist.columns.nlevels > 1:
+        hist.columns = hist.columns.droplevel(1)
+
+    # Drop rows with no Close price
+    if "Close" in hist.columns:
+        hist = hist.dropna(subset=["Close"])
+
     return {
         "closes": hist["Close"].values.flatten().tolist(),
         "volumes": hist["Volume"].fillna(0).values.flatten().tolist(),
